@@ -1,0 +1,202 @@
+import random
+from colorama import Fore, Back, Style, init
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------
+#  dodPoker:  a poker server to run automated texas hold'em
+#  poker rounds with bots
+#  Copyright (C) 2017 wobe-systems GmbH
+# -----------------------------------------------------------
+# -----------------------------------------------------------
+# Configuration
+# You need to change the setting according to your environment
+gregister_url='http://192.168.0.5:5001'
+glocalip_adr='192.168.0.14'
+
+# -----------------------------------------------------------
+
+from flask import Flask, request
+from flask_restful import Resource, Api
+import sys
+
+from requests import put
+import json
+
+app = Flask(__name__)
+api = Api(app)
+
+# Web API to be called from the poker manager
+class PokerPlayerAPI(Resource):
+
+    ## return bid to caller
+    #
+    #  Depending on the cards passed to this function in the data parameter,
+    #  this function has to return the next bid.
+    #  The following rules are applied:
+    #   -- fold --
+    #   bid < min_bid
+    #   bid > max_bid -> ** error **
+    #   (bid > min_bid) and (bid < (min_bid+big_blind)) -> ** error **
+    #
+    #   -- check --
+    #   (bid == 0) and (min_bid == 0) -> check
+    #
+    #   -- call --
+    #   (bid == min_bid) and (min_bid > 0)
+    #
+    #   -- raise --
+    #   min_bid + big_blind + x
+    #   x is any value to increase on top of the Big blind
+    #
+    #   -- all in --
+    #   bid == max_bid -> all in
+    #
+    #  @param data : a dictionary containing the following values - example: data['pot']
+    #                min_bid   : minimum bid to return to stay in the game
+    #                max_bid   : maximum possible bid
+    #                big_blind : the current value of the big blind
+    #                pot       : the total value of the current pot
+    #                board     : a list of board cards on the table as string '<rank><suit>'
+    #                hand      : a list of individual hand cards as string '<rank><suit>'
+    #
+    #                            <rank> : 23456789TJQKA
+    #                            <suit> : 's' : spades
+    #                                     'h' : hearts
+    #                                     'd' : diamonds
+    #                                     'c' : clubs
+    #
+    # @return a dictionary containing the following values
+    #         bid  : a number between 0 and max_bid
+    def __get_bid(self, data):
+        init()
+        print(Style.RESET_ALL)
+        print("----------------------------------------------------------------------\n", data)
+        # data = self.createBid(data)
+        # print("Client: ", data)
+        result = 0
+        max_bid = data['max_bid']
+        #print(max_bid)
+        min_bid = data['min_bid']
+        big_blind = data['big_blind']
+        randomRaise = 0
+        print('Max: ', max_bid)
+        print('Min: ', min_bid)
+        print('Big: ', big_blind)
+        card1 = ((data['hand'])[0])[0]
+        card2 = ((data['hand'])[1])[0]
+        if(min_bid > 0 and max_bid > 0 and big_blind > 0):
+            start = min_bid + big_blind
+            if(start >= max_bid):
+                start = min_bid - big_blind
+            randomRaise = random.randint(start, max_bid)
+        if(card1 == '8' or card1 == '9' or card1 == 'T' or card1 == 'J' or card1 == 'Q' or card1 == 'K' or card1 == 'A'): #This code is for the raise logic
+            result = randomRaise
+            print('Raise', Fore.YELLOW)
+        else: #This code is for the call logic
+            result = max_bid
+            print('Call', Fore.GREEN)
+
+        #fold logic. If the hand cards are 2 and 3. We assume that 2 and 3 cards are a bad hand
+        print(data['hand'])
+
+
+        #if((card1 == 2 and card2 == 3) or (card1 == 3 and card2 == 2)):
+        if(card1 == '1' or card1 == '2' or card1 == '3' or card1 == '4' or card1 == '5'):
+            print('Fold', Fore.GREEN)
+
+            result = 0;
+
+
+        print(data, Fore.MAGENTA)
+        print(randomRaise, Back.WHITE)
+        print('-------------------------------EndOfRequest------------------')
+        return result
+        #return max_bid
+
+    def getMinBid(self, data):
+        min_bid = data['min_bid']
+
+    def getMaxBid(self, data):
+        max_bid = data['max_bid']
+
+
+    def createBid(self, data):
+        max_bid = data['max_bid']
+        board = data['board']
+        pot = data['pot']
+        min_bid = data['min_bid']
+        hand = data['hand']
+        big_blind = data['big_blind']
+
+        bid = min_bid
+        #bid condition
+
+        return self.createData(max_bid, min_bid, pot, hand, big_blind, board, bid)
+
+    def createData(self, mx, mn, pt, h, bb, b, bid):
+        return {'max_bid': mx, 'min_bid': mn, 'pot': pt, 'hand': h, 'big_blind': bb, 'board': b, 'bid': bid}
+    # dispatch incoming get commands
+    def get(self, command_id):
+
+        data = request.form['data']
+        data = json.loads(data)
+
+        if command_id == 'get_bid':
+            return {'bid': self.__get_bid(data)}
+        else:
+            return {}, 201
+
+    # dispatch incoming put commands (if any)
+    def put(self, command_id):
+        return 201
+
+
+api.add_resource(PokerPlayerAPI, '/dpoker/player/v1/<string:command_id>')
+
+# main function
+def main():
+    team_name = 'SHAFTS'
+    api_port = 12000
+    api_url = 'http://%s:%s' % (glocalip_adr, api_port)
+    api_pass = 'caT6'
+
+
+    # run the player bot with parameters
+    # if len(sys.argv) == 4:
+    #     team_name = sys.argv[1]
+    #     api_port = int(sys.argv[2])
+    #     api_url = 'http://%s:%s' % (glocalip_adr, api_port)
+    #     api_pass = sys.argv[3]
+    # else:
+    #     print("""
+
+# DevOps Poker Bot - usage instruction
+# ------------------------------------
+# python3 dplayer.py <team name> <port> <password>
+# example:
+#     python3 dplayer bazinga 40001 x407
+       # """)
+      #  return 0
+
+
+    # register player
+    r = put("%s/dpoker/v1/enter_game"%gregister_url, data={'team': team_name, \
+                                                           'url': api_url,\
+                                                           'pass':api_pass}).json()
+    if r != 201:
+        raise Exception('registration failed: probably wrong team name')
+
+    else:
+        print('registration successful')
+
+    try:
+        app.run(host='0.0.0.0', port=api_port, debug=False)
+    finally:
+        put("%s/dpoker/v1/leave_game"%gregister_url, data={'team': team_name, \
+                                                           'url': api_url,\
+                                                           'pass': api_pass}).json()
+# run the main function
+if __name__ == '__main__':
+    main()
+
+
